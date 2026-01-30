@@ -1,9 +1,9 @@
 class Player {
-  String id; // ip:port
+  String id;
   String name;
   bool ready;
   int score;
-  String role; // SERVER ONLY
+  String role;
 
   Player({
     required this.id,

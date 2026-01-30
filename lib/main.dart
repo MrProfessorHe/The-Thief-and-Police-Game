@@ -62,6 +62,8 @@ class _GamePageState extends State<GamePage> {
   List players = [];
   int countdown = -1;
   bool ready = false;
+  String role = "";
+  int score = 0;
 
   @override
   void initState() {
@@ -74,6 +76,10 @@ class _GamePageState extends State<GamePage> {
     client.onPlayers = (p) => setState(() => players = p);
     client.onCountdown = (v) => setState(() => countdown = v);
     client.onStart = () => setState(() => countdown = 0);
+    client.onRole = (r, s) => setState(() {
+          role = r;
+          score = s;
+        });
 
     client.start(widget.isHost ? "Host" : "Player");
   }
@@ -94,13 +100,17 @@ class _GamePageState extends State<GamePage> {
           if (countdown > 0)
             Text("Starting in $countdown",
                 style: const TextStyle(fontSize: 24)),
+          if (role.isNotEmpty)
+            Text("🎭 Role: $role  |  💰 Score: $score",
+                style: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.bold)),
           Expanded(
             child: ListView(
               children: players
                   .map((p) => ListTile(
                         title: Text(p["name"]),
-                        subtitle:
-                            Text("Score ${p["score"]} | Ready ${p["ready"]}"),
+                        subtitle: Text(
+                            "Score ${p["score"]} | Ready ${p["ready"]}"),
                       ))
                   .toList(),
             ),

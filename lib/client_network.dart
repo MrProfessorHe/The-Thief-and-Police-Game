@@ -11,6 +11,7 @@ class ClientNetwork {
   Function(List)? onPlayers;
   Function(int)? onCountdown;
   Function()? onStart;
+  Function(String, int)? onRole;
 
   Future<void> start(String name) async {
     socket = await RawDatagramSocket.bind(
@@ -52,6 +53,9 @@ class ClientNetwork {
         break;
       case "start":
         onStart?.call();
+        break;
+      case "role":
+        onRole?.call(msg["role"], msg["points"]);
         break;
     }
   }

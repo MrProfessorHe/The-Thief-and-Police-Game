@@ -7,8 +7,35 @@ class HostServer {
 
   RawDatagramSocket? socket;
   final Map<String, Player> players = {};
-
   bool countdownActive = false;
+
+  final List<String> rolePriority = [
+    "Police",
+    "Thief",
+    "King",
+    "Queen",
+    "Emperor",
+    "Prince",
+    "Minister",
+    "Advisor",
+    "Commander",
+    "Soldier",
+    "Kundan",
+  ];
+
+  final Map<String, int> rolePoints = {
+    "King": 2000,
+    "Queen": 1800,
+    "Emperor": 1700,
+    "Prince": 1500,
+    "Police": 1200,
+    "Thief": 1200,
+    "Minister": 1000,
+    "Advisor": 800,
+    "Commander": 600,
+    "Soldier": 500,
+    "Kundan": 100,
+  };
 
   Future<void> start() async {
     socket = await RawDatagramSocket.bind(
@@ -32,12 +59,7 @@ class HostServer {
     });
   }
 
-  void handle(
-    Map<String, dynamic> msg,
-    InternetAddress addr,
-    int port,
-    String id,
-  ) {
+  void handle(Map msg, InternetAddress addr, int port, String id) {
     switch (msg["type"]) {
       case "discover":
         send(addr, port, {"type": "host_ack"});
@@ -60,17 +82,20 @@ class HostServer {
   }
 
   void checkLobby() async {
-    if (players.length < 3) return;
+    if (players.length < 2) return;
 
     final allReady = players.values.every((p) => p.ready);
 
     if (allReady && !countdownActive) {
       countdownActive = true;
+
       for (int i = 3; i > 0; i--) {
         broadcast({"type": "countdown", "value": i});
         await Future.delayed(const Duration(seconds: 1));
         if (!countdownActive) return;
       }
+
+      assignRolesAndScores();
       broadcast({"type": "start"});
     }
 
@@ -80,6 +105,34 @@ class HostServer {
     }
   }
 
+  void assignRolesAndScores() {
+    final list = players.values.toList();
+    list.shuffle();
+
+    for (int i = 0; i < list.length; i++) {
+      final role = rolePriority[i];
+      final points = rolePoints[role] ?? 0;
+
+      list[i].role = role;
+      list[i].score += points;
+
+      final parts = list[i].id.split(":");
+      send(
+        InternetAddress(parts[0]),
+        int.parse(parts[1]),
+        {
+          "type": "role",
+          "role": role,
+          "points": points,
+        },
+      );
+
+      print("🎭 ${list[i].name} → $role (+$points)");
+    }
+
+    broadcastPlayers();
+  }
+
   void broadcastPlayers() {
     broadcast({
       "type": "players",
@@ -87,7 +140,7 @@ class HostServer {
     });
   }
 
-  void broadcast(Map<String, dynamic> data) {
+  void broadcast(Map data) {
     final bytes = utf8.encode(jsonEncode(data));
     for (final id in players.keys) {
       final parts = id.split(":");
@@ -95,11 +148,7 @@ class HostServer {
     }
   }
 
-  void send(
-    InternetAddress addr,
-    int port,
-    Map<String, dynamic> data,
-  ) {
+  void send(InternetAddress addr, int port, Map data) {
     socket!.send(
       utf8.encode(jsonEncode(data)),
       addr,
