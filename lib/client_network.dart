@@ -3,6 +3,7 @@ import 'dart:io';
 
 class ClientNetwork {
   static const int port = 7777;
+  Function(int)? onRound;
 
   RawDatagramSocket? socket;
   InternetAddress? hostAddr;
@@ -12,6 +13,9 @@ class ClientNetwork {
   Function(int)? onCountdown;
   Function()? onStart;
   Function(String, int)? onRole;
+
+  Function(bool, String, String)? onRoundResult;
+  Function(String, int)? onFinalWinner;
 
   Future<void> start(String name) async {
     socket = await RawDatagramSocket.bind(
@@ -38,6 +42,24 @@ class ClientNetwork {
 
   void handle(Map msg, InternetAddress addr, int port) {
     switch (msg["type"]) {
+      case "round_result":
+        onRoundResult?.call(
+          msg["correct"],
+          msg["police"],
+          msg["thief"],
+        );
+        break;
+
+      case "final_winner":
+        onFinalWinner?.call(
+          msg["name"],
+          msg["score"],
+        );
+        break;
+      case "round":
+        onRound?.call(msg["value"]);
+        break;
+
       case "host_ack":
         hostAddr = addr;
         hostPort = port;
@@ -79,5 +101,16 @@ class ClientNetwork {
       InternetAddress("255.255.255.255"),
       port,
     );
+  }
+
+  void guess(String targetId) {
+    send({
+      "type": "guess",
+      "targetId": targetId,
+    });
+  }
+
+  void shuffleRoles() {
+    send({"type": "shuffle"});
   }
 }

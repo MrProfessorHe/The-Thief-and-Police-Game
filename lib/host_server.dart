@@ -2,6 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'models.dart';
 
+int currentRound = 1;
+final int maxRounds = 10;
+bool roundActive = false;
+String? thiefId;
+
 class HostServer {
   static const int port = 7777;
 
@@ -27,9 +32,9 @@ class HostServer {
     "King": 2000,
     "Queen": 1800,
     "Emperor": 1700,
-    "Prince": 1500,
-    "Police": 1200,
-    "Thief": 1200,
+    "Prince": 1200,
+    "Police": 0,
+    "Thief": 0,
     "Minister": 1000,
     "Advisor": 800,
     "Commander": 600,
@@ -61,6 +66,23 @@ class HostServer {
 
   void handle(Map msg, InternetAddress addr, int port, String id) {
     switch (msg["type"]) {
+      case "guess":
+        handleGuess(id, msg["targetId"]);
+        break;
+
+        case "shuffle":
+          if (!roundActive) {
+            currentRound++;
+            resetReady();
+            assignRolesAndScores();
+            broadcast({"type": "start"});
+            broadcastRound();
+            resendRoles();
+          }
+          break;
+
+
+
       case "discover":
         send(addr, port, {"type": "host_ack"});
         break;
@@ -96,7 +118,11 @@ class HostServer {
       }
 
       assignRolesAndScores();
+
+      // 🔁 resend roles AFTER start (UDP safety)
       broadcast({"type": "start"});
+      broadcastRound();
+      resendRoles();
     }
 
     if (!allReady && countdownActive) {
@@ -109,12 +135,17 @@ class HostServer {
     final list = players.values.toList();
     list.shuffle();
 
+    thiefId = null;
+    roundActive = true;
+
     for (int i = 0; i < list.length; i++) {
       final role = rolePriority[i];
-      final points = rolePoints[role] ?? 0;
 
       list[i].role = role;
-      list[i].score += points;
+
+      if (role == "Thief") {
+        thiefId = list[i].id;
+      }
 
       final parts = list[i].id.split(":");
       send(
@@ -123,14 +154,11 @@ class HostServer {
         {
           "type": "role",
           "role": role,
-          "points": points,
         },
       );
-
-      print("🎭 ${list[i].name} → $role (+$points)");
     }
 
-    broadcastPlayers();
+    broadcastPlayers(); // score unchanged here
   }
 
   void broadcastPlayers() {
@@ -155,4 +183,74 @@ class HostServer {
       port,
     );
   }
+
+  void handleGuess(String policeId, String targetId) {
+    final police = players[policeId];
+    if (police == null) return;
+
+    if (!roundActive || police.role != "Police") return;
+
+    roundActive = false;
+
+    bool correct = targetId == thiefId;
+
+    if (correct) {
+      police.score += 1500;
+    } else {
+      players[thiefId!]?.score += 1500;
+    }
+
+    broadcast({
+      "type": "round_result",
+      "correct": correct,
+      "police": police.name,
+      "thief": players[thiefId!]?.name,
+    });
+
+    broadcastPlayers();
+
+    if (currentRound == maxRounds) {
+      endGame();
+    }
+  }
+
+  void endGame() {
+    final winner = players.values.reduce((a, b) => a.score > b.score ? a : b);
+
+    broadcast({
+      "type": "final_winner",
+      "name": winner.name,
+      "score": winner.score,
+    });
+  }
+
+  void resetReady() {
+    for (final p in players.values) {
+      p.ready = false;
+    }
+  }
+
+  void resendRoles() {
+    for (final p in players.values) {
+      if (p.role.isEmpty) continue;
+
+      final parts = p.id.split(":");
+      send(
+        InternetAddress(parts[0]),
+        int.parse(parts[1]),
+        {
+          "type": "role",
+          "role": p.role,
+          "points": rolePoints[p.role] ?? 0,
+        },
+      );
+    }
+  }
+  void broadcastRound() {
+  broadcast({
+    "type": "round",
+    "value": currentRound,
+  });
+}
+
 }
