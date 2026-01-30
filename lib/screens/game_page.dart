@@ -20,6 +20,11 @@ class GamePage extends StatefulWidget {
 }
 
 class _GamePageState extends State<GamePage> {
+  bool lobbyOpen = true; // ✅ NEW
+
+  int maxRounds = 5;
+  bool gameLocked = false;
+
   int currentRound = 1;
   String myId = "";
   bool gameStarted = false;
@@ -68,13 +73,16 @@ class _GamePageState extends State<GamePage> {
     };
 
     // 🚀 GAME START
-    client.onStart = () {
-      setState(() {
-        gameStarted = true;
-        navIndex = 1;
-        hasGuessed = false; // reset at round start
-      });
-    };
+client.onStart = () {
+  setState(() {
+    gameStarted = true;
+    lobbyOpen = false; // ❌ close lobby during game
+    navIndex = 1;
+    hasGuessed = false;
+  });
+};
+
+
 
     // 🧮 ROUND RESULT  ✅ MUST BE BEFORE start()
     client.onRoundResult = (correct, police, thief) {
@@ -109,6 +117,69 @@ class _GamePageState extends State<GamePage> {
       });
     };
 
+    client.onRoundConfig = (max) {
+      setState(() {
+        maxRounds = max;
+      });
+    };
+
+client.onReset = () {
+  if (!mounted) return;
+
+  setState(() {
+    // 🔁 GAME STATE RESET
+    currentRound = 1;
+    gameStarted = false;
+    hasGuessed = false;
+    role = "";
+
+    // ✅ THIS IS THE KEY LINE
+    lobbyOpen = true;   // 👈 REOPEN LOBBY
+
+    // ✅ READY BUTTON RESET
+    ready = false;
+
+    // UI
+    navIndex = 0;
+    countdown = -1;
+  });
+};
+
+
+
+
+
+client.onFinalWinner = (name, score) {
+  if (!mounted) return;
+
+setState(() {
+  gameStarted = false;
+  lobbyOpen = false; // ❌ still closed
+  ready = false;
+  navIndex = 0;
+  role = "";
+  hasGuessed = false;
+});
+
+
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => AlertDialog(
+      title: const Text("🏆 Game Over"),
+      content: Text("Winner: $name\nScore: $score"),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text("OK"),
+        ),
+      ],
+    ),
+  );
+};
+
+
+
     // ▶️ START CLIENT LAST
     client.start(widget.playerName);
   }
@@ -120,11 +191,25 @@ class _GamePageState extends State<GamePage> {
         players: players,
         ready: ready,
         countdown: countdown,
+        lobbyOpen: lobbyOpen,
+
+        // 👇 HOST DATA
+        isHost: widget.isHost,
+        gameStarted: gameStarted,
+        maxRounds: maxRounds,
+
         onToggleReady: () {
           ready = !ready;
           client.toggleReady(ready);
           setState(() {});
         },
+
+        // 👇 HOST ACTIONS
+        onSetRounds: widget.isHost ? (v) => client.setRounds(v) : null,
+
+        onEndGame: widget.isHost ? () => client.endGame() : null,
+
+        onPlayAgain: widget.isHost ? () => client.resetGame() : null,
       ),
       gameStarted
           ? RoleScreen(
@@ -140,11 +225,11 @@ class _GamePageState extends State<GamePage> {
                 client.guess(id);
               },
               onShuffle: () {
-  setState(() {
-    hasGuessed = false;
-  });
-  client.shuffleRoles();
-},
+                setState(() {
+                  hasGuessed = false;
+                });
+                client.shuffleRoles();
+              },
             )
           : const Center(child: Text("Game not started")),
       ScoreScreen(players: players),

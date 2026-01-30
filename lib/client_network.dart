@@ -5,6 +5,10 @@ class ClientNetwork {
   static const int port = 7777;
   Function(int)? onRound;
 
+  Function(int)? onRoundConfig;
+  Function()? onReset;
+
+
   RawDatagramSocket? socket;
   InternetAddress? hostAddr;
   int? hostPort;
@@ -79,6 +83,15 @@ class ClientNetwork {
       case "role":
         onRole?.call(msg["role"], msg["points"]);
         break;
+
+      case "round_config":
+        onRoundConfig?.call(msg["max"]);
+        break;
+
+      case "reset":
+        onReset?.call();
+        break;
+
     }
   }
 
@@ -113,4 +126,17 @@ class ClientNetwork {
   void shuffleRoles() {
     send({"type": "shuffle"});
   }
+
+  void setRounds(int value) {
+    send({"type": "set_rounds", "value": value});
+  }
+
+  void endGame() {
+    send({"type": "end_game"});
+  }
+
+  void resetGame() {
+    send({"type": "reset_game"});
+  }
+
 }

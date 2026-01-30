@@ -3,9 +3,12 @@ import 'dart:io';
 import 'models.dart';
 
 int currentRound = 1;
-final int maxRounds = 10;
+int maxRounds = 7; // 🔥 editable by host
 bool roundActive = false;
+bool gameLocked = false;
 String? thiefId;
+String? hostId;
+
 
 class HostServer {
   static const int port = 7777;
@@ -70,18 +73,16 @@ class HostServer {
         handleGuess(id, msg["targetId"]);
         break;
 
-        case "shuffle":
-          if (!roundActive) {
-            currentRound++;
-            resetReady();
-            assignRolesAndScores();
-            broadcast({"type": "start"});
-            broadcastRound();
-            resendRoles();
-          }
-          break;
-
-
+      case "shuffle":
+        if (!roundActive) {
+          currentRound++;
+          resetReady();
+          assignRolesAndScores();
+          broadcast({"type": "start"});
+          broadcastRound();
+          resendRoles();
+        }
+        break;
 
       case "discover":
         send(addr, port, {"type": "host_ack"});
@@ -92,14 +93,43 @@ class HostServer {
           id,
           () => Player(id: id, name: msg["name"]),
         );
+
+        // 👑 FIRST PLAYER = HOST
+        hostId ??= id;
+
         broadcastPlayers();
         break;
+
 
       case "ready":
         players[id]?.ready = msg["ready"];
         broadcastPlayers();
         checkLobby();
         break;
+      case "set_rounds":
+        if (id != hostId) return; // ❌ non-host blocked
+
+        maxRounds = msg["value"];
+        broadcast({
+          "type": "round_config",
+          "max": maxRounds,
+        });
+        break;
+
+      case "end_game":
+        if (id != hostId) return;
+
+        endGame();
+        roundActive = false;
+        break;
+
+
+      case "reset_game":
+        if (id != hostId) return;
+
+        resetGame();
+        break;
+
     }
   }
 
@@ -209,9 +239,11 @@ class HostServer {
 
     broadcastPlayers();
 
-    if (currentRound == maxRounds) {
+    if (currentRound >= maxRounds) {
       endGame();
+      gameLocked = true;
     }
+    if (gameLocked) return;
   }
 
   void endGame() {
@@ -246,11 +278,30 @@ class HostServer {
       );
     }
   }
-  void broadcastRound() {
-  broadcast({
-    "type": "round",
-    "value": currentRound,
-  });
-}
 
+  void broadcastRound() {
+    broadcast({
+      "type": "round",
+      "value": currentRound,
+    });
+  }
+
+  void resetGame() {
+    currentRound = 1;
+    gameLocked = false;
+    roundActive = false;
+    thiefId = null;
+
+    for (final p in players.values) {
+      p.score = 0;
+      p.ready = false;
+      p.role = "";
+    }
+
+    broadcast({
+      "type": "reset",
+    });
+
+    broadcastPlayers();
+  }
 }
